@@ -1,0 +1,295 @@
+---
+title: "Assessing missingness of data in research"
+author: "Duncan Kabiito Matovu"
+format: 
+  html:
+    embed-resources: true
+    toc: true
+    toc-depth: 2
+    toc-location: left
+    number-sections: true
+    number-depth: 3
+    theme: flatly
+    smooth-scroll: true
+editor: visual
+---
+
+## Introduction
+
+#### Missingness
+
+Research and data analysis frequently face the problem of missing data, which is characterized as the absence of observations or replies in a data set. It can happen for a number of reasons, including survey non-response, data entry mistakes, or longitudinal study dropout. Missing data must be handled carefully because failing to do so can result in skewed findings and incorrect inferences.
+
+To maintain the validity and integrity of their studies, researchers must carefully deal with missing data. The gaps can be filled in using methods like imputation, which calculates missing values from observed data. It is also crucial to perform sensitivity analysis to determine how missingness affects study results.
+
+Fundamentally, recognizing and compensating for missing data is not only a statistical requirement but also a critical step in performing trustworthy and credible research. It ensures that research results appropriately reflect the community under study and make a significant contribution to scientific or social understanding.
+
+#### Imputation
+
+A statistical approach known as "imputation" is used to handle missing data by "imputing" or predicting the values that are missing based on the observed data. For several reasons, it is essential to data analysis and research.
+
+Imputation, in the first place, aids in maintaining sample size and statistical power. Simply eliminating cases with missing values when data is present might drastically reduce the sample size, which may result in underpowered analyses and unreliable findings. Imputation enables researchers to keep as much data as they can.
+
+Second, imputation lessens bias and maintains the dataset's representativeness. Without imputation, the data may become biased in favor of people or cases having full information, which could result in inaccurate estimations. Imputed values aid in reestablishing equilibrium and guarantee that the dataset is more accurate in representing the complete population.
+
+Imputation can be done in a number of ways, such as mean imputation, regression imputation, and multiple imputation. The strategy chosen depends on the type of data being used and the theories put out regarding the mechanism for missing data.
+
+In conclusion, imputation is an effective method for addressing missing data that guarantees the statistical validity of the study and yields more precise understanding of the phenomenon being studied. When working with partial datasets, researchers should take this useful technique into account.
+
+## Correcting for missingness
+
+Below are five steps to ensuring missing data are correctly identified and appropriately dealt with:
+
+1.  Ensure your data are coded correctly.
+
+2.  Identify missing values within each variable.
+
+3.  Look for patterns of missingness.
+
+4.  Check for associations between missing and observed data.
+
+5.  Decide how to handle missing data.
+
+### NOTE: The simulation below used a pseudo linelist dataset from the Epi R Handbook
+
+```{r, echo=FALSE, results='hide', include=FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  echo = FALSE,  # hide all code chunks in output
+  warning = FALSE, # do not show warnings in the output word doc 
+  message = FALSE, # do not show  messages in the output word doc
+  fig.align = "center")
+```
+
+```{r, results='hide'}
+pacman::p_load(
+  rio,           # import/export
+  tidyverse,     # data mgmt and viz
+  naniar,        # assess and visualize missingness
+  mice,          # missing data imputation
+  here,
+  gridExtra,
+  finalfit)
+
+linelist <- import(here("data/linelist_cleaned.rds"))
+```
+
+## Assessing missingness within your dataset
+
+### Percent of all data frame values that are missing
+
+```{r}
+pct_miss(linelist)
+```
+
+### Percent of rows with any value missing
+
+```{r}
+pct_miss_case(linelist)
+```
+
+### Percent of rows that are complete (no values missing)
+
+```{r}
+pct_complete_case(linelist)
+```
+
+## Visualizing missingness
+
+#### Show percentage of missingness in the dataset, for all variables
+
+```{r}
+gg_miss_var(linelist, show_pct = T) 
+```
+
+### Percentage of missingness by factor variable
+
+#### Show missingness of all variables by a factor variable of your choice
+
+Below, I wanted to understand the percentage of missigness for both the outcome and gender variable
+
+```{r}
+a <- linelist %>% 
+  gg_miss_var(show_pct = TRUE, facet = `outcome`)
+
+
+b <- linelist %>% 
+  gg_miss_var(show_pct = TRUE, facet = gender)
+
+grid.arrange(a, b, ncol = 2)
+
+```
+
+#### Heatplot of missingness across the entire data frame
+
+A heatplot is the otherway you could try to quickly visualize and look through, to obtain a picture of missingness across all variables in your dataset.
+
+You realize that the infector and source variables have about 35% missingness but overall missingness in this data stands at 6.7%
+
+This seems much better than the lollipop plot we had above
+
+```{r}
+# Heatplot of missingness across the entire data frame  
+vis_miss(linelist)
+```
+
+#### Heatplot of missingness only for a specific variable, chosen variable is differ
+
+Sometimes you would want to be specific to a variable of your choice, just leverage the select function for a variable of your choice, here I used the infector variable
+
+```{r}
+linelist %>% select(`infector`) %>% vis_miss()
+
+```
+
+#### Explore and visualize missingness relationships
+
+There are times when you would like to look at the level of missingness between two variables, here I used age in years and temperature
+
+```{r}
+# Explore and visualize missingness relationships -------------------------
+
+ggplot(
+  data = linelist,
+  mapping = aes(x = age_years, y = temp)) +     
+  geom_miss_point()
+```
+
+## Imputation
+
+As earlier introduced, there are some rudementary ways of dealing imputing like using mean, median, maximum and minimum imputations. These methods are directional/predicatable in a way hence leading to erroneous results that could bias inference
+
+### Regression imputation
+
+A slightly more sophisticated approach is to fill in the missing number with a statistical model's prediction of what it will likely be.
+
+Below, a demonstrated use of a a simple temperature model to predict values just for the observations where temperature is missing
+
+```{r}
+simple_temperature_model_fit <- lm(temp ~ fever + age_years, data = linelist)
+
+#using our simple temperature model to predict values just for the observations where temp is missing
+predictions_for_missing_temps <- predict(simple_temperature_model_fit,
+                                         newdata = linelist %>% filter(is.na(temp)))
+
+```
+
+Displayed is a sample prediction of missing values within temperature, only 10 rows are displayed
+
+```{r}
+data.frame(round(predictions_for_missing_temps,2)) %>% 
+  head(n = 10) %>% 
+  janitor::clean_names() %>% 
+  rename("Predictions for missing temp" = round_predictions_for_missing_temps_2) %>% 
+    flextable::flextable() %>% 
+  flextable::autofit() %>% 
+  flextable::bg(part = "body", bg = "gray95") %>%
+  flextable::theme_box()
+```
+
+### Last Observation Carried Forward (LOCF) and Baseline Observation Carried Forward (BOCF)
+
+LOCF and BOCF are approaches for time series/longitudinal data imputation. The concept is to substitute the prior observed value for the missing data. The method looks for the most recent observed value when a series of values are missing.
+
+```{r, warning=FALSE}
+population <- readxl::read_excel(here("data/population.xlsx"))
+
+population %<>% 
+  mutate(Year = as.integer(Year),
+         Male = as.integer(Male),
+         Female = as.integer(Female))
+```
+
+#### Imputing for years using fill function
+
+```{r}
+population %>% 
+  fill(Year) %>% 
+  flextable::flextable() %>% 
+  flextable::autofit() %>% 
+  flextable::bg(part = "body", bg = "gray95") %>%
+  flextable::theme_box()
+```
+
+#### Imputing the male population using the fill function
+
+```{r}
+population %>% fill(Male) %>% 
+    flextable::flextable() %>% 
+  flextable::autofit() %>% 
+  flextable::bg(part = "body", bg = "gray95") %>%
+  flextable::theme_box()
+```
+
+##### Imputing the missing male population values in the "down" direction
+
+```{r}
+population %>% 
+  fill(Male, .direction = "down")%>% 
+  flextable::flextable() %>% 
+  flextable::autofit() %>% 
+  flextable::bg(part = "body", bg = "gray95") %>%
+  flextable::theme_box()
+```
+
+##### Imputing the missing female population values using the "up" direction
+
+```{r}
+population %>% 
+  fill(Female, .direction = "up") %>% 
+  flextable::flextable() %>% 
+  flextable::autofit() %>% 
+  flextable::bg(part = "body", bg = "gray95") %>%
+  flextable::theme_box()
+```
+
+## Multiple Imputation
+
+When you do multiple imputation, you create multiple datasets with the missing values imputed to plausible data values (depending on your research data you might want to create more or less of these imputed datasets, but the mice package sets the default number to 5)
+
+```{r, warning=FALSE}
+model_dataset <- linelist %>%
+  select(temp, fever, age_years, gender, cough, wt_kg, ht_cm, outcome)
+
+```
+
+#### Percentage of missingness
+
+This is the percentage of missingness in the dataset we shallmutlize for multiple imputation
+
+```{r}
+pct_miss(model_dataset)
+```
+
+```{r, warning=FALSE}
+# Specify which columns are continuous and categorical
+continuous_vars <- c("temp", "age_years", "wt_kg", "ht_cm")
+categorical_vars <- c("fever", "gender", "cough", "outcome")
+
+# Create a method list for imputation
+method <- list()
+method[continuous_vars] <- "norm" # Impute continuous variables with normal method
+method[categorical_vars] <- "polyreg" # Impute categorical variables with polyreg method
+
+# Perform multiple imputation
+imputed_data <- mice(model_dataset, method = method, seed = 1, m = 5, print = FALSE)
+
+# Complete the imputed datasets
+completed_data <- complete(imputed_data, action = "long")
+```
+
+After multiple imputation, the percentage of missingness has reduced to:
+
+```{r, warning=FALSE}
+pct_miss(completed_data)
+
+```
+
+For a more robust analysis when missing data is a significant concern, Multiple Imputation is good solution that isn't always much more work than doing a complete case analysis.
+
+# Code
+```{r, ref.label=knitr::all_labels(), echo=TRUE, eval=FALSE}
+
+```
+
+
